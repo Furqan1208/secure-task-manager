@@ -4,7 +4,7 @@ DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS users;
 
 -- Users table: stores registered accounts
--- Note: Passwords are stored in plaintext for this demo version
+-- Passwords are hashed using Werkzeug security (pbkdf2:sha256)
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,

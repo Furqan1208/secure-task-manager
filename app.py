@@ -1,4 +1,5 @@
 from flask import Flask, request, render_template, redirect, url_for, session, abort, flash
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 from datetime import datetime
 import os
@@ -8,7 +9,7 @@ import os
 # ---------------------------------------------------------------------------
 
 app = Flask(__name__)
-app.secret_key = 'insecure-secret-key-for-demo'
+app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE = os.path.join(BASE_DIR, 'database.db')
@@ -58,7 +59,7 @@ def get_current_user_id():
 
 
 # ---------------------------------------------------------------------------
-# TASK HELPERS
+# TASK HELPERS (with ownership enforcement)
 # ---------------------------------------------------------------------------
 
 def get_user_tasks(user_id):
@@ -71,28 +72,36 @@ def get_user_tasks(user_id):
     return tasks
 
 
-def get_task_by_id(task_id):
-    """Fetch a single task by its ID. No ownership check — used for detail view."""
+def get_task_by_id(task_id, user_id):
+    """Fetch a single task by ID only if it belongs to the given user."""
     db = get_db()
-    task = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    task = db.execute(
+        "SELECT * FROM tasks WHERE id = ? AND user_id = ?",
+        (task_id, user_id)
+    ).fetchone()
     return task
 
 
-def delete_task_by_id(task_id):
-    """Delete a task by ID."""
+def delete_task_by_id(task_id, user_id):
+    """Delete a task by ID only if it belongs to the given user."""
     db = get_db()
-    db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-    db.commit()
-
-
-def update_task(task_id, title, description, status):
-    """Update task fields."""
-    db = get_db()
-    db.execute(
-        "UPDATE tasks SET title = ?, description = ?, status = ? WHERE id = ?",
-        (title, description, status, task_id)
+    cursor = db.execute(
+        "DELETE FROM tasks WHERE id = ? AND user_id = ?",
+        (task_id, user_id)
     )
     db.commit()
+    return cursor.rowcount
+
+
+def update_task(task_id, user_id, title, description, status):
+    """Update task fields only if the task belongs to the given user."""
+    db = get_db()
+    cursor = db.execute(
+        "UPDATE tasks SET title = ?, description = ?, status = ? WHERE id = ? AND user_id = ?",
+        (title, description, status, task_id, user_id)
+    )
+    db.commit()
+    return cursor.rowcount
 
 
 def create_new_task(user_id, title, description, status):
@@ -111,14 +120,22 @@ def create_new_task(user_id, title, description, status):
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Handle user registration."""
+    """Handle user registration with password hashing."""
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        if not username or not password:
+            flash("Username and password are required.", "error")
+            return render_template('register.html')
+
         db = get_db()
         try:
-            db.execute("INSERT INTO users (username, password) VALUES (?, ?)",
-                       (username, password))
+            hashed_pw = generate_password_hash(password)
+            db.execute(
+                "INSERT INTO users (username, password) VALUES (?, ?)",
+                (username, hashed_pw)
+            )
             db.commit()
             flash("Registration successful! Please log in.", "success")
         except sqlite3.IntegrityError:
@@ -130,19 +147,23 @@ def register():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Handle user login."""
+    """Handle user login with parameterized queries and password hashing."""
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        if not username or not password:
+            flash("Username and password are required.", "error")
+            return render_template('login.html')
+
         db = get_db()
+        # SECURE: Parameterized query prevents SQL injection
+        user = db.execute(
+            "SELECT id, password FROM users WHERE username = ?",
+            (username,)
+        ).fetchone()
 
-        # VULNERABILITY: SQL Injection — intentionally using string formatting
-        # to allow manipulation of the query for educational testing.
-        query = f"SELECT id FROM users WHERE username = '{username}' AND password = '{password}'"
-        cursor = db.execute(query)
-        user = cursor.fetchone()
-
-        if user:
+        if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             flash("Login successful!", "success")
             return redirect(url_for('tasks'))
@@ -186,19 +207,17 @@ def tasks():
 
 @app.route('/task/<int:task_id>')
 def view_task(task_id):
-    """Display details for a single task."""
+    """Display details for a single task. Enforces ownership."""
     redirect_resp = require_login()
     if redirect_resp:
         return redirect_resp
 
-    # VULNERABILITY: IDOR — No ownership verification.
-    # Any authenticated user can view any task by ID.
-    task = get_task_by_id(task_id)
+    user_id = get_current_user_id()
+    task = get_task_by_id(task_id, user_id)
     if task is None:
         abort(404)
 
-    # VULNERABILITY: XSS — The template uses |safe filter on task fields,
-    # allowing script injection to execute in the browser.
+    # SECURE: Jinja2 auto-escaping is active; no |safe filter used
     return render_template('task.html', task=task)
 
 
@@ -210,9 +229,13 @@ def create_task():
         return redirect_resp
 
     user_id = get_current_user_id()
-    title = request.form['title']
-    description = request.form.get('description', '')
+    title = request.form.get('title', '').strip()
+    description = request.form.get('description', '').strip()
     status = request.form.get('status', 'pending')
+
+    if not title:
+        flash("Task title is required.", "error")
+        return redirect(url_for('tasks'))
 
     create_new_task(user_id, title, description, status)
     flash("Task created successfully!", "success")
@@ -221,20 +244,28 @@ def create_task():
 
 @app.route('/task/<int:task_id>/edit', methods=['GET', 'POST'])
 def edit_task(task_id):
-    """Handle editing an existing task."""
+    """Handle editing an existing task. Enforces ownership."""
     redirect_resp = require_login()
     if redirect_resp:
         return redirect_resp
 
-    task = get_task_by_id(task_id)
+    user_id = get_current_user_id()
+    task = get_task_by_id(task_id, user_id)
     if task is None:
         abort(404)
 
     if request.method == 'POST':
-        title = request.form['title']
-        description = request.form.get('description', '')
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
         status = request.form.get('status', 'pending')
-        update_task(task_id, title, description, status)
+
+        if not title:
+            flash("Task title is required.", "error")
+            return render_template('edit_task.html', task=task)
+
+        updated = update_task(task_id, user_id, title, description, status)
+        if updated == 0:
+            abort(404)
         flash("Task updated successfully!", "success")
         return redirect(url_for('view_task', task_id=task_id))
 
@@ -243,16 +274,16 @@ def edit_task(task_id):
 
 @app.route('/task/<int:task_id>/delete', methods=['POST'])
 def delete_task(task_id):
-    """Handle deletion of a task."""
+    """Handle deletion of a task. Enforces ownership."""
     redirect_resp = require_login()
     if redirect_resp:
         return redirect_resp
 
-    task = get_task_by_id(task_id)
-    if task is None:
+    user_id = get_current_user_id()
+    deleted = delete_task_by_id(task_id, user_id)
+    if deleted == 0:
         abort(404)
 
-    delete_task_by_id(task_id)
     flash("Task deleted successfully!", "success")
     return redirect(url_for('tasks'))
 

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ task.title | safe }} - Secure Task Manager{% endblock %}
+{% block title %}{{ task.title }} - Secure Task Manager{% endblock %}
 {% block content %}
 
 <div class="card task-detail">
-    <h2>{{ task.title | safe }}</h2>
+    <h2>{{ task.title }}</h2>
 
     <div class="task-meta">
         <span class="badge badge-{{ task.status }}">{{ task.status }}</span>
@@ -12,7 +12,7 @@
 
     <div class="task-description">
         {% if task.description %}
-            {{ task.description | safe }}
+            {{ task.description }}
         {% else %}
             <em style="color: #999;">No description provided.</em>
         {% endif %}
