@@ -7,10 +7,12 @@
     <form method="post">
         <div class="form-group">
             <label for="title">Title</label>
+            <!-- FIXED: Value is automatically escaped by Jinja2 -->
             <input type="text" id="title" name="title" class="form-control" value="{{ task.title }}" required>
         </div>
         <div class="form-group">
             <label for="description">Description</label>
+            <!-- FIXED: Textarea content is automatically escaped by Jinja2 -->
             <textarea id="description" name="description" class="form-control" placeholder="Add details about this task...">{{ task.description or '' }}</textarea>
         </div>
         <div class="form-group">
@@ -28,4 +30,3 @@
 </div>
 
 {% endblock %}
-

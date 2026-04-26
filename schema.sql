@@ -23,4 +23,3 @@ CREATE TABLE tasks (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users (id)
 );
-

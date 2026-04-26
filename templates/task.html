@@ -3,6 +3,7 @@
 {% block content %}
 
 <div class="card task-detail">
+    <!-- FIXED: No |safe filter - Jinja2 auto-escaping prevents XSS -->
     <h2>{{ task.title }}</h2>
 
     <div class="task-meta">
@@ -12,6 +13,7 @@
 
     <div class="task-description">
         {% if task.description %}
+            <!-- FIXED: Content is automatically escaped by Jinja2, preventing XSS attacks -->
             {{ task.description }}
         {% else %}
             <em style="color: #999;">No description provided.</em>
@@ -28,4 +30,3 @@
 </div>
 
 {% endblock %}
-

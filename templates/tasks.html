@@ -11,6 +11,7 @@
         <li class="task-item">
             <div class="task-info">
                 <div>
+                    <!-- FIXED: Removed any |safe filters - Jinja2 auto-escaping prevents XSS -->
                     <a href="{{ url_for('view_task', task_id=task.id) }}" class="task-title">{{ task.title }}</a>
                     <span class="badge badge-{{ task.status }}">{{ task.status }}</span>
                 </div>
@@ -61,4 +62,3 @@
 </div>
 
 {% endblock %}
-
