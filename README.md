@@ -1,191 +1,213 @@
-# Secure Task Manager - Vulnerable Version (Educational Purpose Only)
+# Secure Task Manager - Vulnerable Version
 
-**WARNING: This version contains intentional security vulnerabilities for educational purposes. DO NOT use this in production or any real-world environment.**
+**⚠️ WARNING: This version contains intentional security vulnerabilities for educational purposes ONLY.**
 
-A task management web application with intentionally placed security vulnerabilities to demonstrate common web application flaws including SQL Injection, IDOR (Insecure Direct Object References), and XSS (Cross-Site Scripting).
+A Flask-based task management application with three deliberately placed security vulnerabilities to demonstrate and teach common web application security flaws.
+
+## Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the application
+python app.py
+
+# In another terminal, run tests
+python run_all_tests.py
+```
+
+The application will be available at `http://localhost:5000`
+
+---
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Security Warning](#security-warning)
-- [Intentional Vulnerabilities](#intentional-vulnerabilities)
-- [Vulnerability Details](#vulnerability-details)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
+- [Vulnerabilities Summary](#vulnerabilities-summary)
+- [Detailed Vulnerability Analysis](#detailed-vulnerability-analysis)
+- [Setup Instructions](#setup-instructions)
 - [Running the Application](#running-the-application)
-- [Demonstrating Vulnerabilities](#demonstrating-vulnerabilities)
 - [Automated Security Testing](#automated-security-testing)
+- [Manual Vulnerability Demonstration](#manual-vulnerability-demonstration)
 - [Project Structure](#project-structure)
-- [Technologies Used](#technologies-used)
-- [Educational Purpose](#educational-purpose)
 - [Fixing the Vulnerabilities](#fixing-the-vulnerabilities)
+- [Technologies](#technologies)
+- [Legal & Ethical Guidelines](#legal--ethical-guidelines)
 
 ## Overview
 
-This is a vulnerable task management web application designed for educational and testing purposes. It allows users to:
+This educational application demonstrates three OWASP Top 10 vulnerabilities in a working web application:
 
-- Register new accounts
-- Login with authentication
-- Create, read, update, and delete tasks
+1. **SQL Injection** - Unsanitized user input in database queries
+2. **IDOR (Insecure Direct Object References)** - Missing authorization checks
+3. **XSS (Stored Cross-Site Scripting)** - Unsafe template rendering
 
-However, it contains three critical security vulnerabilities that can be exploited:
+### Features
 
-1. SQL Injection in the login functionality
-2. IDOR (Insecure Direct Object References) in task management
-3. XSS (Cross-Site Scripting) in task creation and display
+- User registration and authentication
+- Create, read, update, and delete (CRUD) tasks
+- Multi-user task management
+- Automated security test suite
 
 ## Security Warning
+### ❌ DO NOT
 
-**THIS IS A DELIBERATELY VULNERABLE APPLICATION**
+- Deploy in production
+- Use with real user data
+- Expose to the internet
+- Use on shared systems
 
-- DO NOT deploy this on any public server
-- DO NOT use this with real user data
-- DO NOT use this in production environments
-- ONLY use this for educational purposes in isolated environments
-- ONLY use this to learn about security vulnerabilities
-- ONLY use this to practice penetration testing in authorized lab settings
+### ✅ DO
 
-## Intentional Vulnerabilities
+- Use only in isolated development environments
+- Use for educational purposes in authorized settings
+- Use for authorized penetration testing
+- Study the vulnerabilities and understand fixes
 
-This application contains three distinct security vulnerabilities as required for the Secure Software Design and Development coursework:
+---
 
-| # | Vulnerability | CWE | Location | Severity |
-| --- | --- | --- | --- | --- |
-| 1 | SQL Injection | CWE-89 | Login form (`/login`) | Critical |
-| 2 | IDOR | CWE-639 | Task URLs (`/task/<id>`) | High |
-| 3 | XSS (Stored) | CWE-79 | Task creation/display | High |
+## Vulnerabilities Summary
 
-## Vulnerability Details
+| # | Vulnerability | CWE | Severity | Location |
+|---|---|---|---|---|
+---
+
+## Detailed Vulnerability Analysis
 
 ### 1. SQL Injection (CWE-89)
 
-Location: Login route in `app.py`
+**Location:** `app.py` - Login route
 
-Vulnerable code:
-
+**Vulnerable Code:**
 ```python
-# VULNERABLE - String concatenation in SQL query
-query = "SELECT id FROM users WHERE username = '" + username + "' AND password = '" + password + "'"
-cursor.execute(query)
+query = f"SELECT id FROM users WHERE username = '{username}' AND password = '{password}'"
+cursor = db.execute(query)
+user = cursor.fetchone()
 ```
 
-What is wrong:
+**The Problem:**
+- User input directly concatenated into SQL query
+- No input validation or parameterization
+- Attackers can modify query logic
 
-- User input is directly concatenated into SQL query
-- No parameterization or sanitization
-- Attacker can modify query structure
+**Impact:**
+- Authentication bypass without credentials
+- Unauthorized database access
+- Potential data theft or modification
+- Complete application compromise
 
-Impact:
+**Example Attack:**
+```
+Username: admin' OR '1'='1' --
+**Location:** `app.py` - Task routes (`/task/<id>`, `/task/<id>/edit`, `/task/<id>/delete`)
 
-- Authentication bypass
-- Database data theft
-- Potential database modification
-- Complete system compromise
-
-### 2. IDOR - Insecure Direct Object References (CWE-639)
-
-Location: Task routes in `app.py`
-
-Vulnerable code:
-
+**Vulnerable Code:**
 ```python
-# VULNERABLE - No ownership verification
-task = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
-# No check if task belongs to current user
+@app.route('/task/<int:task_id>')
+def view_task(task_id):
+    task = get_task_by_id(task_id)  # No ownership check!
+    if task is None:
+        abort(404)
+    return render_template('task.html', task=task)
 ```
 
-What is wrong:
+**The Problem:**
+- No authorization verification
+- Only checks if task exists, not if user owns it
+- Task IDs are sequential and guessable
 
-- No authorization checks for task access
-- Users can access any task by guessing IDs
-- No ownership verification
+**Impact:**
+- Unauthorized viewing of other users' tasks
+- Modification of other users' tasks
+- Deletion of other users' tasks
+- Privacy breach and data tampering
 
-Impact:
-
-- Unauthorized access to other users' tasks
-- Viewing private task data
-- Modifying other users' tasks
-- Deleting other users' tasks
-
-### 3. XSS - Cross-Site Scripting (CWE-79)
-
-Location: Task creation and display in `app.py` and templates
-
-Vulnerable code:
-
-```python
-# VULNERABLE - No HTML escaping
-title = request.form['title']
-description = request.form['description']
+**Example Attack:**
 ```
+1. Create account as User A
+2. Create a task (ID = 1)
+3. Log in as User B
+4. VisiStored XSS - Cross-Site Scripting (CWE-79)
 
-Template pattern:
+**Location:** Task creation and display
 
+**Vulnerable Template Code:**
 ```html
-<!-- VULNERABLE - Unsafe rendering -->
+<!-- templates/task.html -->
 <h2>{{ task.title | safe }}</h2>
 <div class="task-description">
     {{ task.description | safe }}
 </div>
 ```
 
+**The Problem:**
+- User input stored without sanitization
+- `| safe` filter renders HTML/JavaScript unescaped
+- Malicious scripts execute in user's browser
+
+**Impact:**
+- Session hijacking (steal authentication cookies)
+- Redirect to malicious sites
+- Phishing attacks
+- Defacement of application
+
+**Example Attack:**
+```
+Task Title: <img src=x onerror="alert('XSS Attack!')">
+Task Description: <script>/* malicious code */</script>
+``` }}
+</div>
+```
+
 What is wrong:
 
-- User input stored without sanitization
-- Template allows unsafe rendering
-- Script content can execute in browser context
+---
 
-Impact:
+## Setup Instructions
 
-- Session hijacking risk
-- Cookie theft risk
-- Phishing and defacement risk
-
-## Prerequisites
-
-Before running this vulnerable application, ensure you have:
+### Prerequisites
 
 - Python 3.8 or higher
-- `pip` (Python package manager)
-- Git (optional)
-- Isolated environment (VM or container recommended)
+- pip package manager
+- 50MB free disk space
+- Isolated environment (recommended: VM or container)
 
-## Installation
+### Installation Steps
 
-### 1. Clone the Repository
+1. **Navigate to project directory:**
+   ```bash
+   cd secure-task-manager
+   ```
 
-```bash
-git clone <your-repository-url>
-cd secure-task-manager
-```
+2. **Create virtual environment:**
+   ```bash
+   # Windows
+   python -m venv venv
+   venv\Scripts\activate
 
-### 2. Stay on Main Branch (Vulnerable Version)
+   # Mac/Linux
+   python -m venv venv
+   source venv/bin/activate
+   ```
 
-```bash
-git checkout main
-```
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### 3. Create Virtual Environment (Recommended for isolation)
+4. **Start the application:**
+   ```bash
+   python app.py
+   ```
 
-Windows:
+5. **Access the application:**
+   ```
+   http://localhost:5000
+   ```
 
-```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
-Mac/Linux:
-
-```bash
-python -m venv venv
-source venv/bin/activate
-```
-
-### 4. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
+**Note:** The database (`database.db`) is automatically 
 
 Requirements:
 
@@ -202,70 +224,31 @@ The database is auto-created on first run.
 ### Start the Vulnerable Server
 
 ```bash
+---
+
+## Running the Application
+
+### Start the Server
+
+```bash
 python app.py
 ```
 
-Note: Debug mode may be enabled for vulnerability demonstration.
-
-### Access the Application
-
-```text
-http://localhost:5000
+Expected output:
+```
+ * Serving Flask app 'app'
+ * Debug mode: on
+ * Running on http://127.0.0.1:5000
 ```
 
-## Demonstrating Vulnerabilities
+### Access the Web Interface
 
-### Demo 1: SQL Injection (Authentication Bypass)
+1. Open browser to `http://localhost:5000`
+2. Register a new account
+3. Create, edit, view, and delete tasks
+4. Log out and try to access other users' tasks by URL
 
-Goal: Show that unsafe query construction can bypass login checks.
-
-High-level steps:
-
-1. Open the login page.
-2. Enter a crafted username payload that alters SQL logic.
-3. Submit any password.
-4. Observe whether authentication is bypassed.
-
-Expected result:
-
-- Login may succeed without valid credentials.
-- Demonstrates why parameterized queries are required.
-
-### Demo 2: IDOR (Access Other Users' Tasks)
-
-Goal: Show missing ownership checks on task resources.
-
-High-level steps:
-
-1. Create two users.
-2. Create a task as User A.
-3. Log in as User B.
-4. Attempt to access User A task URL by task ID.
-
-Expected result:
-
-- User B may view or alter User A data.
-- Demonstrates broken authorization.
-
-### Demo 3: XSS (Stored Cross-Site Scripting)
-
-Goal: Show unsafe rendering of user-supplied content.
-
-High-level steps:
-
-1. Create a task using script-like input in title or description.
-2. Save and view the task.
-3. Observe whether browser executes injected content.
-
-Expected result:
-
-- Browser executes content instead of displaying harmless text.
-- Demonstrates need for escaping and safe templating.
-
-## Automated Security Testing
-
-This project includes Python test scripts to validate the three intentional vulnerabilities.
-
+---
 ### Included Test Scripts
 
 - `run_all_tests.py` - runs all vulnerability tests in sequence
@@ -317,102 +300,214 @@ For `fixed` branch:
 ### Common Testing Issues
 
 - App not running:
-    - Start server first with `python app.py`
-- Wrong folder:
-    - Run tests inside `secure-task-manager`, not parent directory
-- Database state confusion from repeated runs:
-    - Stop app, delete `database.db`, restart app, rerun tests
-- Port conflict on 5000:
-    - Change app port and update `BASE_URL` in test files to match
+    - Start server first withscripts to automatically detect and verify all three vulnerabilities.
+
+### Test Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `run_all_tests.py` | Runs all three test suites sequentially |
+| `test_sql_injection.py` | Tests SQL Injection vulnerability |
+| `test_idor.py` | Tests IDOR vulnerability |
+| `test_xss.py` | Tests Stored XSS vulnerability |
+
+### Running Tests
+
+#### 1. Run All Tests
+```bash
+python run_all_tests.py
+```
+
+#### 2. Run Individual Tests
+```bash
+# Test SQL Injection
+python test_sql_injection.py
+
+# Test IDOR
+python test_idor.py
+
+# Test XSS
+python test_xss.py
+```
+
+### Expected Test Results
+
+**On `main` branch (vulnerable version):**
+```
+RUNNING: SQL Injection Tests
+[FAIL] SQL INJECTION VULNERABILITIES DETECTED ✓ (Expected)
+
+RUNNING: IDOR Tests
+[FAIL] IDOR VULNERABILITIES DETECTED ✓ (Expected)
+
+RUNNING: XSS Tests
+[FAIL] XSS VULNERABILITIES DETECTED ✓ (Expected)
+
+TOTAL: 0 passed, 3 failed
+```
+
+**On `fixed` branch (secure version):**
+```
+RUNNING: SQL Injection Tests
+[PASS] No SQL injection vulnerability detected ✓
+
+RUNNING: IDOR Tests
+[PASS] No IDOR vulnerabilities detected ✓
+
+RUNNING: XSS Tests
+[PASS] No XSS vulnerability detected ✓
+
+TOTAL: 3 passed, 0 failed
+```
+
+### Test Execution Requirements
+---
 
 ## Project Structure
 
-```text
+```
 secure-task-manager/
-├── app.py                 # Main Flask application (VULNERABLE)
-├── schema.sql             # Database schema definition
-├── requirements.txt       # Python dependencies
-├── database.db            # SQLite database (auto-created)
+│
+├── app.py                          # Main Flask application (VULNERABLE)
+├── schema.sql                      # Database schema
+├── requirements.txt                # Python dependencies
+├── database.db                     # SQLite database (auto-created)
+│
+├── run_all_tests.py               # Master test runner
+├── test_sql_injection.py           # SQL Injection test suite
+├── test_idor.py                   # IDOR test suite
+├── test_xss.py                    # XSS test suite
+│
 ├── static/
 │   └── css/
-│       └── style.css      # Application styling
+│       └── style.css              # Application styling
+│
 ├── templates/
-│   ├── base.html          # Base template
-│   ├── login.html         # Login page
-│   ├── register.html      # Registration page
-│   ├── tasks.html         # Task listing
-│   ├── task.html          # Task view
-│   └── edit_task.html     # Edit form
-└── README.md              # This file
+│   ├── base.html                  # Base template (layout)
+│   ├── login.html                 # Login page
+│   ├── register.html              # Registration page
+│   ├── tasks.html                 # Task list view
+│   ├── task.html                  # Task detail view (vulnerable)
+│   └── edit_task.html             # Task edit form
+│
+└── README.md                       # This file
 ```
 
-## Technologies Used
-
-- Backend Framework: Flask 2.3.0
-- Database: SQLite3
-- Frontend: HTML5, CSS3, Jinja2 templating
-- Language: Python 3.8+
-
-## Educational Purpose
-
-This vulnerable application is designed to help students understand:
-
-- How SQL Injection occurs with unsanitized SQL construction
-- Why IDOR appears when authorization checks are missing
-- How stored XSS executes when content is rendered unsafely
-- Why secure coding practices must be applied end-to-end
-
-Who should use this:
-
-- Students learning web security
-- Instructors demonstrating security flaws
-- Developers studying secure design principles
-
-Ethical use guidelines:
-
-- Use only in isolated local environments
-- Test only on systems you own or are authorized to assess
-- Follow applicable laws and institutional policies
+---
 
 ## Fixing the Vulnerabilities
 
-The fixed version of this application is available on the `fixed` branch:
+The secure version with all fixes applied is available on the `fixed` branch:
 
 ```bash
 git checkout fixed
 ```
 
-Summary of fixes applied in the secure version:
+### Fix Summary
 
-| Vulnerability | Fix Method |
-| --- | --- |
-| SQL Injection | Parameterized queries and validation |
-| IDOR | Ownership checks with `AND user_id = ?` |
-| XSS | HTML escaping and safe template rendering |
+| Vulnerability | Fix Applied |
+|---|---|
+| **SQL Injection** | Parameterized queries using `?` placeholders |
+| **IDOR** | Authorization checks: `WHERE id = ? AND user_id = ?` |
+| **XSS** | Remove `\| safe` filters; Jinja2 auto-escapes by default |
 
-## Troubleshooting
+### Key Security Improvements
 
-### Database Issues
+1. **SQL Injection Fix:**
+   ```python
+   # Before (VULNERABLE)
+   query = f"SELECT id FROM users WHERE username = '{username}' AND password = '{password}'"
+   
+   # After (FIXED)
+   cursor = db.execute("SELECT id FROM users WHERE username = ? AND password = ?", 
+                       (username, password))
+   ```
 
-Delete `database.db` and restart the app. It will be recreated.
+2. **IDOR Fix:**
+   ```python
+   # Before (VULNERABLE)
+   task = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+   
+   # After (FIXED)
+   task = db.execute("SELECT * FROM tasks WHERE id = ? AND user_id = ?", 
+                     (task_id, current_user_id)).fetchone()
+   ```
 
-### Debug Mode Issues
+3. **XSS Fix:**
+   ```html
+   <!-- Before (VULNERABLE) -->
+   <h2>{{ task.title | safe }}</h2>
+   
+   <!-- After (FIXED) -->
+   <h2>{{ task.title }}</h2>  <!-- Auto-escaped -->
+   ```
 
-Debug settings are defined in `app.py`.
+---
 
-### Port Conflicts
+## Technologies
 
-Change port in `app.py`:
+- **Backend:** Flask 2.3.0 (Python web framework)
+- **Database:** SQLite3 (embedded SQL database)
+- **Frontend:** HTML5, CSS3, Jinja2 templating
+- **Language:** Python 3.8+
+- **Testing:** requests (HTTP client library)
 
-```python
-app.run(debug=True, port=5001)
-```
+---
 
-## Legal Disclaimer
+## Legal & Ethical Guidelines
 
-This software is provided for educational purposes only.
+### ⚖️ Legal Disclaimer
 
-The vulnerabilities in this application are intentional and for learning purposes. The authors assume no liability for misuse or damage caused by this software. Users are responsible for complying with applicable laws and regulations.
+This software is provided **for educational purposes only**. All vulnerabilities are **intentional**.
+
+- The authors assume no liability for misuse or damage
+- Users are responsible for legal compliance
+- Unauthorized testing on systems you don't own is illegal
+
+### ✅ Ethical Use
+
+- **Do:** Use this in authorized lab environments
+- **Do:** Follow your institution's policies
+- **Do:** Get written permission before testing any system
+- **Don't:** Test on production systems
+- **Don't:** Test on systems you don't own or have permission for
+- **Don't:** Use findings for malicious purposes
+
+### 📚 Educational Purpose
+
+This project is designed for:
+- Computer science students learning web security
+- Instructors demonstrating security vulnerabilities
+- Security professionals practicing attack techniques
+- Organizations conducting authorized security training
+
+---
+
+## Additional Resources
+
+### Learning Materials
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- [PortSwigger Web Security Academy](https://portswigger.net/web-security)
+- [OWASP SQL Injection](https://owasp.org/www-community/attacks/SQL_Injection)
+- [OWASP IDOR](https://owasp.org/www-community/attacks/Insecure_Direct_Object_References)
+- [OWASP XSS](https://owasp.org/www-community/attacks/xss/)
+
+### Prevention Cheat Sheets
+- [SQL Injection Prevention](https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html)
+- [XSS Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html)
+- [Authorization Testing](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/05-Authorization_Testing/README)
+
+---
+
+## Support
+
+For issues or questions about this educational project, please refer to the course materials or instructor.
+
+---
+
+**Last Updated:** April 2026  
+**Course:** Secure Software Design and Development  
+**Status:** Educational Version (Vulnerable - For Learning Only)ses. The authors assume no liability for misuse or damage caused by this software. Users are responsible for complying with applicable laws and regulations.
 
 ## License
 
